@@ -1,29 +1,41 @@
 {
-  "name": "server",
+  "name": "wake-up-matteo",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Express app to interact with Matteo's alarm clock",
+  "main": "dist/index.js",
+  "type": "commonjs",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "node -e \"require('fs').mkdirSync('./logs', { recursive: true }); require('child_process').execSync('tsc', { stdio: 'inherit' });\"",
+    "dev": "cross-env APP_ENV=development nodemon --watch src --ext ts --exec \"pnpm run build && node -r module-alias/register dist/index.js\"",
+    "start": "cross-env APP_ENV=production node -r module-alias/register dist/index.js"
   },
   "keywords": [],
-  "author": "",
+  "author": "ezequiel-fr",
   "license": "ISC",
   "packageManager": "pnpm@11.1.1",
+  "_moduleAliases": {
+    "@": "dist"
+  },
   "dependencies": {
     "body-parser": "^2.2.2",
+    "colors": "^1.4.0",
     "cors": "^2.8.6",
+    "cross-env": "^10.1.0",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "module-alias": "^2.3.4",
     "mongoose": "^9.6.2",
     "openai": "^6.37.0",
     "ws": "^8.20.1"
   },
   "devDependencies": {
     "@types/body-parser": "^1.19.6",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
     "@types/node": "^25.7.0",
     "@types/ws": "^8.18.1",
     "nodemon": "^3.1.14",
+    "tsconfig-paths": "^4.2.0",
     "typescript": "^6.0.3"
   }
 }
