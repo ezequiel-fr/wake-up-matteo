@@ -3,14 +3,17 @@ import { join } from 'node:path';
 import express, { Router } from 'express';
 
 import config from '@/constants';
+import controllers from '@/routes/controllers';
 
 const router = Router();
 
-// Home page (temp)
-
+// Admin page
 router.get('/', (_req, res) => {
     return res.sendFile(join(config.APP.PUBLIC_DIR, 'index.html'));
 });
+
+// Controllers routes
+router.use('/api', controllers);
 
 // Static assets
 router.use(express.static(config.APP.PUBLIC_DIR, {

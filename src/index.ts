@@ -7,7 +7,7 @@ import express from 'express';
 import { WebSocketServer } from 'ws';
 
 import config from '@/constants';
-import router from '@/router';
+import router from '@/routes';
 import handleWebSocketServer, { broadcastJson } from '@/utils/websocket';
 
 // Complete imports

@@ -14,14 +14,9 @@ function broadcastJson(wss: WebSocketServer, data: unknown) {
 
 function handleWebsocketServer(wss: WebSocketServer) {
     wss.on('connection', ws => {
-        const id = ++wsId;
+        // const id = ++wsId;
+        ++wsId;
         let isAlive = true;
-
-        console.info(`WebSocket client connected: ${id}`);
-
-        ws.on('close', () => {
-            console.info(`WebSocket client disconnected: ${id}`);
-        });
 
         ws.on('pong', () => isAlive = true);
 

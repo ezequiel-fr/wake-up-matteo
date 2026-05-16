@@ -1,26 +1,206 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
 
-    <title>Wake up Matteo !</title>
+    <title>Wake up - Mattéo</title>
 
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = { theme: { extend: {
+            colors: {
+                ink: '#16211d',
+                mist: '#eef4f0',
+                moss: '#4d6b57',
+                sun: '#f2b84b',
+                coral: '#df6b58'
+            },
+            boxShadow: {
+                panel: '0 18px 45px rgba(22, 33, 29, 0.10)'
+            }
+        }}};
+    </script>
+
     <link rel="stylesheet" href="./style.css">
 
 </head>
-<body>
+<body class="min-h-screen bg-mist text-ink antialiased">
 
-    <main>
-        <h1>Test</h1>
+    <main class="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-5 px-4 py-4 sm:px-6 lg:px-8">
+        <header class="flex flex-col gap-4 border-b border-ink/10 pb-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+                <p class="text-xs font-semibold uppercase tracking-[0.22em] text-moss">Admin du réveil</p>
+                <h1 class="mt-1 text-3xl font-semibold tracking-normal text-ink sm:text-4xl">Wake Up Matteo</h1>
+            </div>
 
-        <p>
-            Lorem ipsum dolor sit, amet consectetur adipisicing elit. Enim eos autem culpa sequi
-            voluptatem dicta odit, dignissimos cum! Iste voluptatibus numquam ea harum repellendus
-            asperiores distinctio atque provident adipisci minus.
-        </p>
+            <div class="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+                <div class="rounded-md border border-ink/10 bg-white/70 px-3 py-2">
+                    <p class="text-xs font-medium text-ink/55">Connexion</p>
+                    <p class="mt-1 flex items-center gap-2 text-sm font-semibold">
+                        <span id="wsStatusDot" class="h-2.5 w-2.5 rounded-full bg-coral"></span>
+                        <span id="wsStatus">Hors ligne</span>
+                    </p>
+                </div>
+                <div class="rounded-md border border-ink/10 bg-white/70 px-3 py-2">
+                    <p class="text-xs font-medium text-ink/55">Prochain alarme</p>
+                    <p id="nextAlarm" class="mt-1 text-sm font-semibold">Aucun</p>
+                </div>
+            </div>
+        </header>
+
+        <section class="grid gap-5 lg:grid-cols-[1.05fr_0.95fr]">
+            <div class="rounded-lg bg-white p-4 shadow-panel sm:p-5">
+                <div
+                    class="flex flex-col gap-3 border-b border-ink/10 pb-4 md:flex-row md:items-end md:justify-between">
+                    <div>
+                        <p class="text-sm font-semibold text-moss">Localisation et données en direct</p>
+                        <h2 id="locationName" class="mt-1 text-2xl font-semibold text-ink">Chargement de la localisation
+                        </h2>
+                    </div>
+
+                    <form id="locationForm" class="flex w-full gap-2 md:max-w-md">
+                        <label class="sr-only" for="locationInput">Location</label>
+                        <input id="locationInput" name="location" type="search" placeholder="Ville, pays"
+                            class="min-w-0 flex-1 rounded-md border border-ink/15 bg-white px-3 py-2 text-sm outline-none transition focus:border-moss focus:ring-2 focus:ring-moss/20">
+                        <button
+                            class="rounded-md bg-ink px-4 py-2 text-sm font-semibold text-white transition hover:bg-moss"
+                            type="submit">
+                            Mettre à jour
+                        </button>
+                    </form>
+                </div>
+
+                <div class="grid gap-3 pt-4 sm:grid-cols-2">
+                    <article class="rounded-md border border-ink/10 bg-mist/70 p-4">
+                        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-ink/50">Heure locale</p>
+                        <p id="localTime" class="mt-3 text-4xl font-semibold tabular-nums">--:--</p>
+                        <p id="localDate" class="mt-1 text-sm text-ink/60">--</p>
+                    </article>
+
+                    <article class="rounded-md border border-ink/10 bg-mist/70 p-4">
+                        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-ink/50">Météo</p>
+                        <p id="temperature" class="mt-3 text-4xl font-semibold tabular-nums">--</p>
+                        <p id="weatherLabel" class="mt-1 text-sm text-ink/60">En attente de données</p>
+                    </article>
+
+                    <article class="rounded-md border border-ink/10 bg-mist/70 p-4">
+                        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-ink/50">Vent</p>
+                        <p id="wind" class="mt-3 text-4xl font-semibold tabular-nums">--</p>
+                        <p class="mt-1 text-sm text-ink/60">km/h</p>
+                    </article>
+
+                    <article class="rounded-md border border-ink/10 bg-mist/70 p-4">
+                        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-ink/50">Lever du soleil</p>
+                        <p id="sunrise" class="mt-3 text-4xl font-semibold tabular-nums">--:--</p>
+                        <p id="timezone" class="mt-1 truncate text-sm text-ink/60">--</p>
+                    </article>
+                </div>
+
+                <p id="locationFeedback" class="min-h-6 pt-3 text-sm text-ink/60"></p>
+            </div>
+
+            <div class="rounded-lg bg-white p-4 shadow-panel sm:p-5">
+                <div class="border-b border-ink/10 pb-4">
+                    <p class="text-sm font-semibold text-moss">Programmer l'alarme</p>
+                    <h2 class="mt-1 text-2xl font-semibold">Horaire</h2>
+                </div>
+
+                <form id="alarmForm" class="grid gap-4 pt-4">
+                    <div class="grid gap-3 sm:grid-cols-[160px_1fr]">
+                        <div>
+                            <label class="text-sm font-medium text-ink/65" for="alarmTime">Heure</label>
+                            <input id="alarmTime" required type="time" value="07:30"
+                                class="mt-1 w-full rounded-md border border-ink/15 px-3 py-2 text-lg font-semibold outline-none focus:border-moss focus:ring-2 focus:ring-moss/20">
+                        </div>
+
+                        <div>
+                            <label class="text-sm font-medium text-ink/65" for="alarmLabel">Étiquette</label>
+                            <input id="alarmLabel" type="text" maxlength="40" placeholder="Alarme du matin"
+                                class="mt-1 w-full rounded-md border border-ink/15 px-3 py-2 outline-none focus:border-moss focus:ring-2 focus:ring-moss/20">
+                        </div>
+                    </div>
+
+                    <fieldset>
+                        <legend class="text-sm font-medium text-ink/65">Répéter</legend>
+                        <div id="dayPicker" class="mt-2 grid grid-cols-7 gap-2">
+                            <label class="day-chip"><input type="checkbox" value="1" checked><span>Lun</span></label>
+                            <label class="day-chip"><input type="checkbox" value="2" checked><span>Mar</span></label>
+                            <label class="day-chip"><input type="checkbox" value="3" checked><span>Mer</span></label>
+                            <label class="day-chip"><input type="checkbox" value="4" checked><span>Jeu</span></label>
+                            <label class="day-chip"><input type="checkbox" value="5" checked><span>Ven</span></label>
+                            <label class="day-chip"><input type="checkbox" value="6"><span>Sam</span></label>
+                            <label class="day-chip"><input type="checkbox" value="0"><span>Dim</span></label>
+                        </div>
+                    </fieldset>
+
+                    <div class="grid gap-3 sm:grid-cols-2">
+                        <label
+                            class="flex items-center justify-between rounded-md border border-ink/10 bg-mist/60 px-3 py-2">
+                            <span>
+                                <span class="block text-sm font-semibold">Sensible à la météo</span>
+                                <span class="block text-xs text-ink/55">Garder la météo visible avant le réveil</span>
+                            </span>
+                            <input id="weatherAware" type="checkbox" checked class="h-5 w-5 accent-moss">
+                        </label>
+
+                        <label
+                            class="flex items-center justify-between rounded-md border border-ink/10 bg-mist/60 px-3 py-2">
+                            <span>
+                                <span class="block text-sm font-semibold">Activé</span>
+                                <span class="block text-xs text-ink/55">Activer immédiatement</span>
+                            </span>
+                            <input id="alarmEnabled" type="checkbox" checked class="h-5 w-5 accent-moss">
+                        </label>
+                    </div>
+
+                    <button
+                        class="rounded-md bg-sun px-4 py-2.5 text-sm font-bold text-ink transition hover:bg-[#e5aa37]"
+                        type="submit">
+                        Enregistrer l'alarme
+                    </button>
+                </form>
+            </div>
+        </section>
+
+        <section class="rounded-lg bg-white p-4 shadow-panel sm:p-5">
+            <div class="flex flex-col gap-2 border-b border-ink/10 pb-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <p class="text-sm font-semibold text-moss">Alarmes configurées</p>
+                    <h2 class="mt-1 text-2xl font-semibold">Liste des alarmes</h2>
+                </div>
+                <button id="clearAlarms"
+                    class="rounded-md border border-ink/15 px-3 py-2 text-sm font-semibold text-ink/70 transition hover:border-coral hover:text-coral"
+                    type="button">
+                    Effacer tout
+                </button>
+            </div>
+
+            <div id="alarmsList" class="grid gap-3 pt-4"></div>
+        </section>
     </main>
+
+    <template id="alarmTemplate">
+        <article
+            class="alarm-row grid gap-3 rounded-md border border-ink/10 bg-mist/50 p-3 sm:grid-cols-[120px_1fr_auto] sm:items-center">
+            <div>
+                <p data-field="time" class="text-3xl font-semibold tabular-nums">--:--</p>
+                <p data-field="days" class="text-xs font-medium uppercase tracking-[0.16em] text-ink/45">--</p>
+            </div>
+            <div>
+                <p data-field="label" class="font-semibold">Alarme</p>
+                <p data-field="meta" class="text-sm text-ink/55">Activé</p>
+            </div>
+            <div class="flex items-center gap-2">
+                <button data-action="toggle" class="rounded-md border border-ink/15 px-3 py-2 text-sm font-semibold"
+                    type="button">Basculer</button>
+                <button data-action="delete"
+                    class="rounded-md border border-ink/15 px-3 py-2 text-sm font-semibold text-coral"
+                    type="button">Supprimer</button>
+            </div>
+        </article>
+    </template>
 
     <script src="./app.js"></script>
 
