@@ -50,7 +50,7 @@ void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map)
     uint32_t h = lv_area_get_height(area);
     gfx.draw16bitRGBBitmap(area->x1, area->y1, (uint16_t *)px_map, w, h);
 #endif
-    lv_disp_flush_ready(disp);
+    lv_display_flush_ready(disp);
 }
 
 void my_touchpad_read(lv_indev_t *indev, lv_indev_data_t *data)
@@ -123,7 +123,7 @@ void setup_display()
 
 void loop_display()
 {
-    lv_task_handler();
+    lv_timer_handler();
     delay(5);
 }
 
