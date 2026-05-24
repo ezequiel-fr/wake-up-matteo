@@ -1,57 +1,96 @@
 #include <lvgl.h>
 
+#include <cstdio>
 #include <cstring>
 
 #include "display.h"
+
+#define LINK_BAUD_RATE 19200
 
 HardwareSerial Link(1);
 
 namespace
 {
   lv_obj_t *ui_screen = nullptr;
-  lv_obj_t *ui_status_circle = nullptr;
-  lv_obj_t *ui_status_label = nullptr;
-  lv_obj_t *ui_touch_button = nullptr;
-  lv_obj_t *ui_touch_feedback_label = nullptr;
-  uint32_t touch_count = 0;
+  lv_obj_t *ui_clock_label = nullptr;
+  lv_obj_t *ui_date_label = nullptr;
 
-  void touch_button_event_cb(lv_event_t *e)
+  struct ClockState
   {
-    if (lv_event_get_code(e) != LV_EVENT_CLICKED || ui_touch_feedback_label == nullptr || ui_touch_button == nullptr)
+    int year = 2026;
+    int month = 1;
+    int day = 1;
+    int hour = 0;
+    int minute = 0;
+    int second = 0;
+    uint32_t last_sync_ms = 0;
+    bool valid = false;
+  };
+
+  ClockState clock_state;
+
+  void refresh_clock_labels()
+  {
+    if (ui_clock_label != nullptr)
     {
-      return;
+      lv_label_set_text_fmt(ui_clock_label, "%02d:%02d:%02d", clock_state.hour, clock_state.minute, clock_state.second);
     }
 
-    touch_count++;
-    lv_label_set_text_fmt(ui_touch_feedback_label, "Touch OK (%lu)", static_cast<unsigned long>(touch_count));
-    lv_obj_set_style_bg_color(ui_touch_button, lv_color_hex(0x22C55E), 0);
-    lv_obj_set_style_border_color(ui_touch_button, lv_color_hex(0x22C55E), 0);
+    if (ui_date_label != nullptr)
+    {
+      lv_label_set_text_fmt(ui_date_label, "%02d/%02d/%04d", clock_state.day, clock_state.month, clock_state.year);
+    }
   }
 
-  void apply_led_state(bool enabled)
+  bool parse_set_time_command(const char *line, ClockState &state)
   {
-    if (ui_status_circle == nullptr) return;
+    if (line == nullptr || std::strncmp(line, "SET_TIME:", 9) != 0)
+      return false;
 
-    const lv_color_t color = enabled ? lv_color_hex(0x22C55E) : lv_color_hex(0xEF4444);
+    int day = 0;
+    int month = 0;
+    int year = 0;
+    int hour = 0;
+    int minute = 0;
+    int second = 0;
 
-    lv_obj_set_style_bg_color(ui_status_circle, color, 0);
-    lv_obj_set_style_border_color(ui_status_circle, color, 0);
+    if (std::sscanf(line, "SET_TIME:%2d/%2d/%4d,%2d:%2d:%2d", &day, &month, &year, &hour, &minute, &second) != 6)
+      return false;
+
+    if (
+      day < 1 ||
+      day > 31 ||
+      month < 1 ||
+      month > 12 ||
+      hour < 0 ||
+      hour > 23 ||
+      minute < 0 ||
+      minute > 59 ||
+      second < 0 ||
+      second > 59
+    ) return false;
+
+    state.day = day;
+    state.month = month;
+    state.year = year;
+    state.hour = hour;
+    state.minute = minute;
+    state.second = second;
+    state.last_sync_ms = millis();
+    state.valid = true;
+
+    return true;
   }
 
   void process_serial_line(const char *line)
   {
-    if (line == nullptr || line[0] == '\0')
-    {
-      return;
-    }
+    if (line == nullptr || line[0] == '\0') return;
 
-    if (std::strcmp(line, "LED_OFF") == 0)
-    {
-      apply_led_state(false);
-      return;
-    }
+    if (parse_set_time_command(line, clock_state))
+      return refresh_clock_labels();
 
-    apply_led_state(true);
+    if (std::strcmp(line, "TIME?") == 0)
+      refresh_clock_labels();
   }
 
   void poll_serial_commands()
@@ -62,7 +101,6 @@ namespace
     while (Link.available() > 0)
     {
       const char incoming = static_cast<char>(Link.read());
-
       if (incoming == '\r') continue;
 
       if (incoming == '\n')
@@ -70,19 +108,21 @@ namespace
         line_buffer[line_length] = '\0';
         process_serial_line(line_buffer);
         line_length = 0;
+
         continue;
       }
 
       if (line_length < sizeof(line_buffer) - 1)
         line_buffer[line_length++] = incoming;
-      else line_length = 0;
+      else
+        line_length = 0;
     }
   }
 
   void build_status_screen()
   {
     ui_screen = lv_screen_active();
-    lv_obj_set_style_bg_color(ui_screen, lv_color_hex(0x0F172A), 0);
+    lv_obj_set_style_bg_color(ui_screen, lv_color_hex(0x0B1020), 0);
     lv_obj_set_style_bg_opa(ui_screen, LV_OPA_COVER, 0);
     lv_obj_set_style_pad_all(ui_screen, 0, 0);
     lv_obj_clear_flag(ui_screen, LV_OBJ_FLAG_SCROLLABLE);
@@ -95,40 +135,25 @@ namespace
     lv_obj_set_style_pad_all(container, 0, 0);
     lv_obj_set_flex_flow(container, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(container, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_gap(container, 24, 0);
+    lv_obj_set_style_pad_gap(container, 18, 0);
     lv_obj_clear_flag(container, LV_OBJ_FLAG_SCROLLABLE);
 
-    ui_status_circle = lv_obj_create(container);
-    lv_obj_set_size(ui_status_circle, 180, 180);
-    lv_obj_set_style_radius(ui_status_circle, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_opa(ui_status_circle, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(ui_status_circle, 0, 0);
-    lv_obj_set_style_shadow_width(ui_status_circle, 0, 0);
-    lv_obj_clear_flag(ui_status_circle, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t *title_label = lv_label_create(container);
+    lv_label_set_text(title_label, "REVEIL");
+    lv_obj_set_style_text_color(title_label, lv_color_hex(0x93C5FD), 0);
+    lv_obj_set_style_text_font(title_label, &lv_font_montserrat_14, 0);
 
-    ui_status_label = lv_label_create(container);
-    lv_label_set_text(ui_status_label, "Etat de la LED");
-    lv_obj_set_style_text_color(ui_status_label, lv_color_hex(0xF8FAFC), 0);
-    lv_obj_set_style_text_font(ui_status_label, &lv_font_montserrat_14, 0);
+    ui_clock_label = lv_label_create(container);
+    lv_label_set_text(ui_clock_label, "00:00:00");
+    lv_obj_set_style_text_color(ui_clock_label, lv_color_hex(0xF8FAFC), 0);
+    lv_obj_set_style_text_font(ui_clock_label, &lv_font_montserrat_48, 0);
 
-    ui_touch_button = lv_button_create(container);
-    lv_obj_set_size(ui_touch_button, 220, 52);
-    lv_obj_set_style_radius(ui_touch_button, 14, 0);
-    lv_obj_set_style_bg_color(ui_touch_button, lv_color_hex(0x2563EB), 0);
-    lv_obj_set_style_border_width(ui_touch_button, 0, 0);
-    lv_obj_add_event_cb(ui_touch_button, touch_button_event_cb, LV_EVENT_CLICKED, nullptr);
+    ui_date_label = lv_label_create(container);
+    lv_label_set_text(ui_date_label, "01/01/2026");
+    lv_obj_set_style_text_color(ui_date_label, lv_color_hex(0xCBD5E1), 0);
+    lv_obj_set_style_text_font(ui_date_label, &lv_font_montserrat_14, 0);
 
-    lv_obj_t *button_label = lv_label_create(ui_touch_button);
-    lv_label_set_text(button_label, "Tester le tactile");
-    lv_obj_set_style_text_color(button_label, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_center(button_label);
-
-    ui_touch_feedback_label = lv_label_create(container);
-    lv_label_set_text(ui_touch_feedback_label, "Appuie sur le bouton");
-    lv_obj_set_style_text_color(ui_touch_feedback_label, lv_color_hex(0xCBD5E1), 0);
-    lv_obj_set_style_text_font(ui_touch_feedback_label, &lv_font_montserrat_14, 0);
-
-    apply_led_state(false);
+    refresh_clock_labels();
   }
 } // namespace
 
@@ -137,32 +162,18 @@ void setup()
   setup_display();
   build_status_screen();
 
-  Serial0.begin(115200);
-  Link.begin(9600, SERIAL_8N1, 18, 17);
+  Serial.println("Clock ready");
+  Link.begin(LINK_BAUD_RATE, SERIAL_8N1, 18, 17);
 
-  delay(2000);
+  clock_state.valid = false;
+  clock_state.last_sync_ms = millis();
+
+  refresh_clock_labels();
 }
 
 void loop()
 {
   loop_display();
 
-  // if (Link.available()) {
-  //   String msg = Link.readStringUntil('\n');
-  //   msg.trim();
-  //   Serial0.println("From screen: " + msg);
-  // }
-
   poll_serial_commands();
-
-  // if (Serial0.available() > 0)
-  // {
-  //   String packet = Serial0.readStringUntil('\n');
-  //   packet.trim();
-
-  //   apply_led_state(true);
-  //   delay(1000);
-  //   apply_led_state(false);
-    // apply_led_state(packet == "LED_ON");
-  // }
 }
