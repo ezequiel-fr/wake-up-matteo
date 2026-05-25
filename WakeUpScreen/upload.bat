@@ -1,1 +1,1 @@
-cls && "C:\Users\fride\.platformio\penv\Scripts\platformio.exe" run --target upload --upload-port COM11
+cls && pio run --target upload --upload-port COM11
