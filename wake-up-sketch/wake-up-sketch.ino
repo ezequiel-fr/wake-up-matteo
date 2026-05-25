@@ -1,3 +1,5 @@
+#include <ArduinoJson.h>
+#include <HTTPClient.h>
 #include <SD.h>
 #include <SPI.h>
 #include <WiFi.h>
@@ -21,6 +23,8 @@
 #define DEBUG_TIME 0
 
 HardwareSerial Link(2);
+HTTPClient http;
+JsonDocument doc;
 RTC_DS3231 rtc;
 
 struct tm timeinfo;
@@ -37,6 +41,9 @@ void updateTime();
 
 /* Constants definitions */
 const char* ntpServer = "pool.ntp.org";
+
+const char* apiServer = "192.168.1.140:5500";
+const char* weatherPath = "/api/weather";
 
 /* Core functions */
 void setup() {
@@ -56,6 +63,9 @@ void setup() {
 
   // Recovery delay
   delay(1000);
+
+  // get weather
+  getCurrentWeather();
 }
 
 void loop() {
@@ -167,4 +177,62 @@ void updateTime() {
     now.minute(),
     now.second()
   );
+}
+
+void getCurrentWeather() {
+  String url = String("http://") + apiServer + weatherPath;
+  http.begin(url);
+
+  // send request
+  int httpResponseCode = http.GET();
+
+  if (httpResponseCode > 0) {
+    String payload = http.getString();
+
+    // Parse JSON
+    DeserializationError error = deserializeJson(doc, payload);
+
+    if (error) {
+      Serial.print("JSON parse failed: ");
+      Serial.println(error.c_str());
+      return;
+    }
+
+    // Extract values
+    float temperature =       doc["current"]["temperature_2m"];
+    float windSpeed =         doc["current"]["wind_speed_10m"];
+    const char* weatherCode = doc["current"]["weather_string_code"];
+    const char* sunrise =     doc["daily"]["sunrise"][0];
+
+    // Normalize weather code
+    char weatherCodeNormalized[64];
+    size_t i = 0;
+
+    for (; weatherCode[i] != '\0' && i < sizeof(weatherCodeNormalized) - 1; ++i)
+      weatherCodeNormalized[i] = weatherCode[i] == '-' ? '_' : weatherCode[i];
+
+    weatherCodeNormalized[i] = '\0';
+
+    // Send weather to the screen
+    Serial.printf(
+      "SET_WEATHER:%d,%d,%s,%s\n",
+      (int)(temperature),
+      (int)(windSpeed),
+      sunrise,
+      weatherCodeNormalized
+    );
+    Link.printf(
+      "SET_WEATHER:%d,%d,%s,%s\n",
+      (int)(temperature),
+      (int)(windSpeed),
+      sunrise,
+      weatherCodeNormalized
+    );
+  } else {
+    Serial.print("Error code: ");
+    Serial.println(httpResponseCode);
+  }
+
+  // Free resources
+  http.end();
 }
