@@ -15,20 +15,29 @@ const weatherCodes = new Map([
     [2, 'Partly cloudy'],
     [3, 'Cloudy'],
     [45, 'Fog'],
-    [48, 'Depositing rime fog'],
+    [48, 'Icy fog'],
     [51, 'Light drizzle'],
     [53, 'Drizzle'],
     [55, 'Dense drizzle'],
+    [56, 'Low icy drizzle'],
+    [57, 'Icy drizzle'],
     [61, 'Light rain'],
     [63, 'Rain'],
     [65, 'Heavy rain'],
+    [66, 'Light icy rain'],
+    [67, 'Icy rain'],
     [71, 'Light snow'],
     [73, 'Snow'],
     [75, 'Heavy snow'],
+    [77, 'Snow grains'],
     [80, 'Light showers'],
     [81, 'Showers'],
     [82, 'Heavy showers'],
-    [95, 'Thunderstorm']
+    [85, 'Light snow showers'],
+    [86, 'Snow showers'],
+    [95, 'Thunderstorm'],
+    [96, 'Thunderstorm with light hail'],
+    [99, 'Thunderstorm with heavy hail'],
 ]);
 
 /** @type {WebSocket} */
@@ -192,35 +201,12 @@ function setFeedback(message, isError = false) {
     elements.locationFeedback.className = `min-h-6 pt-3 text-sm ${isError ? 'text-coral' : 'text-ink/60'}`;
 }
 
-async function resolveLocation(query) {
+async function fetchWeather(location) {
     const params = new URLSearchParams({
-        name: query,
-        count: '1',
-        language: 'en',
-        format: 'json'
-    });
-    const response = await fetch(`https://geocoding-api.open-meteo.com/v1/search?${params}`);
-
-    if (!response.ok) throw new Error('Location lookup failed.');
-
-    const data = await response.json();
-    const place = data.results?.[0];
-    if (!place) throw new Error('No matching location found.');
-
-    return place;
-}
-
-async function fetchWeather(place) {
-    const params = new URLSearchParams({
-        latitude: place.latitude,
-        longitude: place.longitude,
-        current: 'temperature_2m,weather_code,wind_speed_10m',
-        daily: 'sunrise',
-        timezone: 'auto',
-        forecast_days: '1'
+        location,
     });
 
-    const response = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`);
+    const response = await fetch(`/api/weather?${params}`);
     if (!response.ok) throw new Error('Weather lookup failed.');
 
     return response.json();
@@ -258,9 +244,8 @@ async function updateLocation(query) {
     setFeedback('Updating live data...');
 
     try {
-        const place = await resolveLocation(location);
-        const weather = await fetchWeather(place);
-        renderWeather(place, weather);
+        const weather = await fetchWeather(location);
+        renderWeather({ name: location }, weather);
     } catch (err) {
         setFeedback(err.message || 'Unable to update this location.', true);
     }

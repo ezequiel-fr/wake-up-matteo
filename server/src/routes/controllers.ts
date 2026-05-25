@@ -1,6 +1,7 @@
 import { Router } from 'express';
 
 import * as alarms from '@/controllers/alarms';
+import * as weather from '@/controllers/weather';
 
 const routes = Router();
 
@@ -16,8 +17,7 @@ routes.put('/alarms/:id', alarms.updateAlarm);
 routes.delete('/alarms/:id', alarms.deleteAlarm);
 
 // Weather data route
-routes.get('/weather', (_req, res) => {
-    return res.send('Weather data');
-});
+routes.get('/weather', weather.getWeather);
+routes.get('/weather/forecast', weather.getWeatherForecast);
 
 export default routes;
