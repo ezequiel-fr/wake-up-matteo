@@ -4,6 +4,8 @@
 #include <cstring>
 
 #include "display.h"
+#include "ui.h"
+#include "weather_icon.h"
 
 #define LINK_BAUD_RATE 19200
 
@@ -11,10 +13,6 @@ HardwareSerial Link(1);
 
 namespace
 {
-  lv_obj_t *ui_screen = nullptr;
-  lv_obj_t *ui_clock_label = nullptr;
-  lv_obj_t *ui_date_label = nullptr;
-
   struct ClockState
   {
     int year = 2026;
@@ -27,18 +25,64 @@ namespace
     bool valid = false;
   };
 
-  ClockState clock_state;
-
-  void refresh_clock_labels()
+  struct WeatherState
   {
-    if (ui_clock_label != nullptr)
+    int temperature_c = 0;
+    int wind_kmh = 0;
+    char sunrise[32] = "";
+    char icon[64] = "cloudy";
+    bool valid = false;
+  };
+
+  ClockState clock_state;
+  WeatherState weather_state;
+
+  void sync_ui_clock()
+  {
+    ui_set_clock(
+        clock_state.year,
+        clock_state.month,
+        clock_state.day,
+        clock_state.hour,
+        clock_state.minute,
+        clock_state.second);
+  }
+
+  void sync_ui_weather()
+  {
+    // Debug: fetch descriptor and print some fields to serial to verify
+    const lv_image_dsc_t *d = get_weather_icon(weather_state.icon);
+    if (d != nullptr)
     {
-      lv_label_set_text_fmt(ui_clock_label, "%02d:%02d:%02d", clock_state.hour, clock_state.minute, clock_state.second);
+      Serial0.printf("get_weather_icon('%s') -> addr=%p w=%u h=%u data_size=%u\n", weather_state.icon, (void *)d, (unsigned)d->header.w, (unsigned)d->header.h, (unsigned)d->data_size);
+    }
+    else
+    {
+      Serial0.printf("get_weather_icon('%s') -> NULL\n", weather_state.icon);
     }
 
-    if (ui_date_label != nullptr)
+    ui_set_weather(
+        weather_state.temperature_c,
+        weather_state.wind_kmh,
+        weather_state.sunrise,
+        weather_state.icon);
+
+    const lv_image_dsc_t *set_d = ui_get_current_icon();
+    int img_w = 0, img_h = 0;
+    ui_get_icon_obj_size(&img_w, &img_h);
+    if (set_d != nullptr)
     {
-      lv_label_set_text_fmt(ui_date_label, "%02d/%02d/%04d", clock_state.day, clock_state.month, clock_state.year);
+      Serial0.printf("ui_set_weather set descriptor addr=%p w=%u h=%u data_size=%u obj_size=%d x %d\n",
+                    (void *)set_d,
+                    (unsigned)set_d->header.w,
+                    (unsigned)set_d->header.h,
+                    (unsigned)set_d->data_size,
+                    img_w,
+                    img_h);
+    }
+    else
+    {
+      Serial0.printf("ui_set_weather set descriptor = NULL obj_size=%d x %d\n", img_w, img_h);
     }
   }
 
@@ -58,17 +102,17 @@ namespace
       return false;
 
     if (
-      day < 1 ||
-      day > 31 ||
-      month < 1 ||
-      month > 12 ||
-      hour < 0 ||
-      hour > 23 ||
-      minute < 0 ||
-      minute > 59 ||
-      second < 0 ||
-      second > 59
-    ) return false;
+        day < 1 ||
+        day > 31 ||
+        month < 1 ||
+        month > 12 ||
+        hour < 0 ||
+        hour > 23 ||
+        minute < 0 ||
+        minute > 59 ||
+        second < 0 ||
+        second > 59)
+      return false;
 
     state.day = day;
     state.month = month;
@@ -82,26 +126,53 @@ namespace
     return true;
   }
 
+  bool parse_set_weather_command(const char *line, WeatherState &state)
+  {
+    if (line == nullptr || std::strncmp(line, "SET_WEATHER:", 12) != 0)
+      return false;
+
+    int temperature_c = 0;
+    int wind_kmh = 0;
+    char sunrise[32] = {0};
+    char icon[64] = {0};
+
+    if (std::sscanf(line, "SET_WEATHER:%d,%d,%31[^,],%63s", &temperature_c, &wind_kmh, sunrise, icon) != 4)
+      return false;
+
+    state.temperature_c = temperature_c;
+    state.wind_kmh = wind_kmh;
+    std::strncpy(state.sunrise, sunrise, sizeof(state.sunrise) - 1);
+    std::strncpy(state.icon, icon, sizeof(state.icon) - 1);
+    state.valid = true;
+
+    return true;
+  }
+
   void process_serial_line(const char *line)
   {
-    if (line == nullptr || line[0] == '\0') return;
+    if (line == nullptr || line[0] == '\0')
+      return;
 
     if (parse_set_time_command(line, clock_state))
-      return refresh_clock_labels();
+      return sync_ui_clock();
+
+    if (parse_set_weather_command(line, weather_state))
+      return sync_ui_weather();
 
     if (std::strcmp(line, "TIME?") == 0)
-      refresh_clock_labels();
+      sync_ui_clock();
   }
 
   void poll_serial_commands()
   {
-    static char line_buffer[32];
+    static char line_buffer[128];
     static size_t line_length = 0;
 
     while (Link.available() > 0)
     {
       const char incoming = static_cast<char>(Link.read());
-      if (incoming == '\r') continue;
+      if (incoming == '\r')
+        continue;
 
       if (incoming == '\n')
       {
@@ -118,62 +189,28 @@ namespace
         line_length = 0;
     }
   }
-
-  void build_status_screen()
-  {
-    ui_screen = lv_screen_active();
-    lv_obj_set_style_bg_color(ui_screen, lv_color_hex(0x0B1020), 0);
-    lv_obj_set_style_bg_opa(ui_screen, LV_OPA_COVER, 0);
-    lv_obj_set_style_pad_all(ui_screen, 0, 0);
-    lv_obj_clear_flag(ui_screen, LV_OBJ_FLAG_SCROLLABLE);
-
-    lv_obj_t *container = lv_obj_create(ui_screen);
-    lv_obj_set_size(container, LV_PCT(100), LV_PCT(100));
-    lv_obj_center(container);
-    lv_obj_set_style_bg_opa(container, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(container, 0, 0);
-    lv_obj_set_style_pad_all(container, 0, 0);
-    lv_obj_set_flex_flow(container, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(container, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_gap(container, 18, 0);
-    lv_obj_clear_flag(container, LV_OBJ_FLAG_SCROLLABLE);
-
-    lv_obj_t *title_label = lv_label_create(container);
-    lv_label_set_text(title_label, "REVEIL");
-    lv_obj_set_style_text_color(title_label, lv_color_hex(0x93C5FD), 0);
-    lv_obj_set_style_text_font(title_label, &lv_font_montserrat_14, 0);
-
-    ui_clock_label = lv_label_create(container);
-    lv_label_set_text(ui_clock_label, "00:00:00");
-    lv_obj_set_style_text_color(ui_clock_label, lv_color_hex(0xF8FAFC), 0);
-    lv_obj_set_style_text_font(ui_clock_label, &lv_font_montserrat_48, 0);
-
-    ui_date_label = lv_label_create(container);
-    lv_label_set_text(ui_date_label, "01/01/2026");
-    lv_obj_set_style_text_color(ui_date_label, lv_color_hex(0xCBD5E1), 0);
-    lv_obj_set_style_text_font(ui_date_label, &lv_font_montserrat_14, 0);
-
-    refresh_clock_labels();
-  }
 } // namespace
 
 void setup()
 {
   setup_display();
-  build_status_screen();
+  setup_ui();
 
-  Serial.println("Clock ready");
+  Serial0.begin(115200);
   Link.begin(LINK_BAUD_RATE, SERIAL_8N1, 18, 17);
+
+  Serial0.println("Clock ready");
 
   clock_state.valid = false;
   clock_state.last_sync_ms = millis();
+  weather_state.valid = false;
 
-  refresh_clock_labels();
+  sync_ui_clock();
+  sync_ui_weather();
 }
 
 void loop()
 {
   loop_display();
-
   poll_serial_commands();
 }
