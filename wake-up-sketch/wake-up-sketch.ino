@@ -18,9 +18,15 @@
 #define SCL   22
 #define SD_CS 13
 
+#define WIFI_LED_PIN 12
+
 #define LINK_BAUD_RATE 19200
 
 #define DEBUG_TIME 0
+#define DEBUG_WIFI 1
+
+#define WIFI_INITIAL_CONNECT_DELAY 15000
+#define WIFI_RECONNECT_DELAY 10000
 
 HardwareSerial Link(2);
 HTTPClient http;
@@ -28,12 +34,14 @@ JsonDocument doc;
 RTC_DS3231 rtc;
 
 struct tm timeinfo;
+unsigned long lastWiFiReconnectAttempt = 0;
 
 /* Function definitions */
 uint8_t checksum(String msg);
 void sendCommand(String cmd);
 
 void setupWiFi();
+void maintainWiFiConnection();
 void setupRTC();
 void setupSD();
 
@@ -55,6 +63,7 @@ void setup() {
   Wire.begin(SDA, SCL);
 
   // Setup WiFi
+  pinMode(WIFI_LED_PIN, OUTPUT);
   setupWiFi();
   // Setup D3231 RTC module in time
   setupRTC();
@@ -69,6 +78,7 @@ void setup() {
 }
 
 void loop() {
+  maintainWiFiConnection();
   updateTime();
   delay(1000);
 }
@@ -95,16 +105,56 @@ void sendCommand(String cmd) {
 
 // setup functions
 void setupWiFi() {
+  bool led_on = true;
+  unsigned long start = millis();
+
   // WiFi connection
+  WiFi.mode(WIFI_STA);
+  WiFi.setAutoReconnect(true);
+  WiFi.persistent(true);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
+  digitalWrite(WIFI_LED_PIN, LOW);
+
   Serial.print("Connecting WiFi ");
 
-  while (WiFi.status() != WL_CONNECTED) {
+  do {
+    if (DEBUG_WIFI) {
+      digitalWrite(WIFI_LED_PIN, led_on);
+      led_on = !led_on;
+    }
+
     delay(500);
     Serial.print(".");
+  } while (WiFi.status() != WL_CONNECTED && millis() - start < WIFI_INITIAL_CONNECT_DELAY);
+
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("\nWiFi not connected yet, will keep retrying in loop");
+    lastWiFiReconnectAttempt = millis();
+    return;
   }
 
   Serial.println("\nWiFi connected");
+  digitalWrite(WIFI_LED_PIN, DEBUG_WIFI);
+
+  lastWiFiReconnectAttempt = millis();
+}
+
+void maintainWiFiConnection() {
+  if (WiFi.status() == WL_CONNECTED) {
+    digitalWrite(WIFI_LED_PIN, DEBUG_WIFI);
+    return;
+  }
+
+  digitalWrite(WIFI_LED_PIN, LOW);
+
+  unsigned long now = millis();
+  if (now - lastWiFiReconnectAttempt < WIFI_RECONNECT_DELAY) return;
+
+  lastWiFiReconnectAttempt = now;
+
+  Serial.println("WiFi disconnected, reconnecting...");
+  WiFi.disconnect();
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
 }
 
 void setupRTC() {
