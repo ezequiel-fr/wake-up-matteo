@@ -64,6 +64,7 @@ const elements = {
     weatherLabel: document.querySelector('#weatherLabel'),
     wind: document.querySelector('#wind'),
     sunrise: document.querySelector('#sunrise'),
+    sunset: document.querySelector('#sunset'),
     timezone: document.querySelector('#timezone'),
     alarmForm: document.querySelector('#alarmForm'),
     alarmTime: document.querySelector('#alarmTime'),
@@ -228,6 +229,10 @@ function renderWeather(place, weather) {
     elements.weatherLabel.textContent = weatherCodes.get(weather.current.weather_code) || 'Live weather';
     elements.wind.textContent = Math.round(weather.current.wind_speed_10m);
     elements.sunrise.textContent = new Date(weather.daily.sunrise[0]).toLocaleTimeString('en-GB', {
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+    elements.sunset.textContent = new Date(weather.daily.sunset[0]).toLocaleTimeString('en-GB', {
         hour: '2-digit',
         minute: '2-digit'
     });

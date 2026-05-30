@@ -10,6 +10,50 @@ const weatherClient = axios.create({
     timeout: 5000,
 });
 
+const parseWeatherDateTime = (value?: string) => {
+    if (!value) return null;
+
+    const match = value.match(
+        /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?$/,
+    );
+
+    if (!match) return null;
+
+    const [, year, month, day, hour, minute, second = '0'] = match;
+
+    return Date.UTC(
+        Number(year),
+        Number(month) - 1,
+        Number(day),
+        Number(hour),
+        Number(minute),
+        Number(second),
+    );
+};
+
+const resolveWeatherStringCode = (
+    weatherCode: number,
+    currentTime?: string,
+    sunrise?: string,
+    sunset?: string,
+    isDayFallback = false,
+) => {
+    const wc = WeatherCodes[weatherCode] || [-1, 'unknown', 'unknown'];
+
+    const currentTimeValue = parseWeatherDateTime(currentTime);
+    const sunriseValue = parseWeatherDateTime(sunrise);
+    const sunsetValue = parseWeatherDateTime(sunset);
+
+    const isDay =
+        currentTimeValue !== null &&
+        sunriseValue !== null &&
+        sunsetValue !== null
+            ? currentTimeValue >= sunriseValue && currentTimeValue < sunsetValue
+            : isDayFallback;
+
+    return isDay ? wc[1] : wc[2];
+};
+
 const resolveLocation = async (query: string) => {
     try {
         const res = await axios.get('https://geocoding-api.open-meteo.com/v1/search', {
@@ -44,8 +88,8 @@ const fetchCurrentWeather = async (place: any) => {
             params: {
                 latitude: place.latitude,
                 longitude: place.longitude,
-                current: 'temperature_2m,weather_code,wind_speed_10m',
-                daily: 'sunrise',
+                current: 'temperature_2m,weather_code,wind_speed_10m,is_day',
+                daily: 'sunrise,sunset',
                 forecast_days: 1,
                 timezone: 'auto',
             },
@@ -86,18 +130,16 @@ const weatherForecast = async (place: any) => {
 
 export const getWeather: RequestHandler = async (_req, res) => {
     try {
-        const place = await resolveLocation('Châlons-en-Champagne');
+        const place = await resolveLocation('Nancy');
         const weatherData = await fetchCurrentWeather(place);
 
-        const wc =
-            WeatherCodes[weatherData.current.weather_code] ||
-            [-1, 'unknown', 'unknown'];
-
-        if (new Date().getHours() >= 18 || new Date().getHours() < 6) {
-            weatherData.current.weather_string_code = wc[2];
-        } else {
-            weatherData.current.weather_string_code = wc[1];
-        }
+        weatherData.current.weather_string_code = resolveWeatherStringCode(
+            weatherData.current.weather_code,
+            weatherData.current.time,
+            weatherData.daily?.sunrise?.[0],
+            weatherData.daily?.sunset?.[0],
+            Boolean(weatherData.current.is_day),
+        );
 
         res.json(weatherData);
     } catch (err) {
@@ -108,7 +150,7 @@ export const getWeather: RequestHandler = async (_req, res) => {
 
 export const getWeatherForecast: RequestHandler = async (_req, res) => {
     try {
-        const place = await resolveLocation('Châlons-en-Champagne');
+        const place = await resolveLocation('Nancy');
         const forecastData = await weatherForecast(place);
 
         res.json(forecastData);
