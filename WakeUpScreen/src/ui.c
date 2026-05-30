@@ -21,6 +21,7 @@ static lv_obj_t *wind_label;
 static lv_obj_t *sunrise_label;
 static lv_obj_t *icon_label;
 static const lv_image_dsc_t *current_icon = NULL;
+static bool current_is_daytime = true;
 
 static void apply_weather_mode(bool is_daytime)
 {
@@ -211,11 +212,14 @@ static void build_ui(void)
 void setup_ui(void)
 {
     build_ui();
+    current_is_daytime = true;
     apply_weather_mode(true);
 }
 
 void ui_set_clock(int year, int month, int day, int hour, int minute, int second)
 {
+    const bool is_daytime = hour >= 6 && hour < 18;
+
     if (clock_label != NULL)
     {
         lv_label_set_text_fmt(clock_label, "%02d:%02d:%02d", hour, minute, second);
@@ -226,7 +230,11 @@ void ui_set_clock(int year, int month, int day, int hour, int minute, int second
         lv_label_set_text_fmt(date_label, "%02d/%02d/%04d", day, month, year);
     }
 
-    apply_weather_mode(hour >= 6 && hour < 18);
+    if (is_daytime != current_is_daytime)
+    {
+        current_is_daytime = is_daytime;
+        apply_weather_mode(is_daytime);
+    }
 }
 
 void ui_set_weather(int temperature_c, int wind_kmh, const char *sunrise_iso8601, const char *icon_name)

@@ -124,7 +124,6 @@ void setup_display()
 void loop_display()
 {
     lv_timer_handler();
-    delay(5);
 }
 
 #endif // DISPLAY_H

@@ -1,15 +1,36 @@
-#include <lvgl.h>
-
 #include <cstdio>
 #include <cstring>
+
+#include <lvgl.h>
+#include <SPI.h>
+#include <SD.h>
+
+#include "AudioFileSourceSD.h"
+#include "AudioGeneratorMP3.h"
+#include "AudioOutputI2S.h"
 
 #include "display.h"
 #include "ui.h"
 #include "weather_icon.h"
 
+// Serial communication baud rate for the link to the main controller
 #define LINK_BAUD_RATE 19200
 
+// SD card chip select pin
+#define SD_CS 10
+
+// IS2 pin definitions for the audio output
+#define I2S_DOUT 17
+#define I2S_BCLK  0
+#define I2S_LRC  18
+
 HardwareSerial Link(1);
+
+AudioGeneratorMP3 *mp3;
+AudioFileSourceSD *file;
+AudioOutputI2S    *out;
+
+bool alarm_music_started = false;
 
 namespace
 {
@@ -50,40 +71,65 @@ namespace
 
   void sync_ui_weather()
   {
-    // Debug: fetch descriptor and print some fields to serial to verify
-    const lv_image_dsc_t *d = get_weather_icon(weather_state.icon);
-    if (d != nullptr)
-    {
-      Serial0.printf("get_weather_icon('%s') -> addr=%p w=%u h=%u data_size=%u\n", weather_state.icon, (void *)d, (unsigned)d->header.w, (unsigned)d->header.h, (unsigned)d->data_size);
-    }
-    else
-    {
-      Serial0.printf("get_weather_icon('%s') -> NULL\n", weather_state.icon);
-    }
-
     ui_set_weather(
         weather_state.temperature_c,
         weather_state.wind_kmh,
         weather_state.sunrise,
         weather_state.icon);
 
-    const lv_image_dsc_t *set_d = ui_get_current_icon();
-    int img_w = 0, img_h = 0;
-    ui_get_icon_obj_size(&img_w, &img_h);
-    if (set_d != nullptr)
+  }
+
+  void release_alarm_music_source()
+  {
+    if (file != nullptr)
     {
-      Serial0.printf("ui_set_weather set descriptor addr=%p w=%u h=%u data_size=%u obj_size=%d x %d\n",
-                    (void *)set_d,
-                    (unsigned)set_d->header.w,
-                    (unsigned)set_d->header.h,
-                    (unsigned)set_d->data_size,
-                    img_w,
-                    img_h);
+      delete file;
+      file = nullptr;
     }
-    else
+  }
+
+  bool start_alarm_music()
+  {
+    if (mp3 == nullptr || out == nullptr)
+      return false;
+
+    if (mp3->isRunning())
+      mp3->stop();
+
+    release_alarm_music_source();
+
+    file = new AudioFileSourceSD("/music/bap.mp3");
+    if (file == nullptr)
     {
-      Serial0.printf("ui_set_weather set descriptor = NULL obj_size=%d x %d\n", img_w, img_h);
+      alarm_music_started = false;
+      Link.println("Failed to open music file");
+      return false;
     }
+
+    if (!mp3->begin(file, out))
+    {
+      alarm_music_started = false;
+      release_alarm_music_source();
+      Link.println("Failed to start music");
+      return false;
+    }
+
+    alarm_music_started = true;
+    Link.println("Playing...");
+
+    return true;
+  }
+
+  bool stop_alarm_music()
+  {
+    if (mp3 != nullptr && mp3->isRunning())
+      mp3->stop();
+
+    release_alarm_music_source();
+    alarm_music_started = false;
+    Link.println("Stopped");
+
+    return true;
   }
 
   bool parse_set_time_command(const char *line, ClockState &state)
@@ -159,8 +205,16 @@ namespace
     if (parse_set_weather_command(line, weather_state))
       return sync_ui_weather();
 
+    if (std::strcmp(line, "RING:1") == 0)
+      return start_alarm_music();
+
+    if (std::strcmp(line, "RING:STOP") == 0)
+      return stop_alarm_music();
+
     if (std::strcmp(line, "TIME?") == 0)
-      sync_ui_clock();
+      return sync_ui_clock();
+
+    Serial.printf("Unknown command received: '%s'\n", line);
   }
 
   void poll_serial_commands()
@@ -171,8 +225,7 @@ namespace
     while (Link.available() > 0)
     {
       const char incoming = static_cast<char>(Link.read());
-      if (incoming == '\r')
-        continue;
+      if (incoming == '\r') continue;
 
       if (incoming == '\n')
       {
@@ -196,10 +249,12 @@ void setup()
   setup_display();
   setup_ui();
 
-  Serial0.begin(115200);
-  Link.begin(LINK_BAUD_RATE, SERIAL_8N1, 18, 17);
+  // Serial0.begin(115200);
+  // Serial0.begin(LINK_BAUD_RATE, SERIAL_8N1, 18, 17);
+  // Serial0.begin(LINK_BAUD_RATE, SERIAL_8N1, 44, 43);
+  Link.begin(LINK_BAUD_RATE, SERIAL_8N1, 44, 43);
 
-  Serial0.println("Clock ready");
+  // Serial0.println("Clock ready");
 
   clock_state.valid = false;
   clock_state.last_sync_ms = millis();
@@ -207,10 +262,42 @@ void setup()
 
   sync_ui_clock();
   sync_ui_weather();
+
+  // audio
+  // SD card
+  SPI.begin(12, 13, 11, SD_CS);
+
+  if (!SD.begin(SD_CS)) {
+    Link.println("SD Card failed!");
+    while (1);
+  }
+
+  Link.println("SD OK");
+
+  // Audio output
+  out = new AudioOutputI2S();
+
+  out->SetPinout(I2S_BCLK, I2S_LRC, I2S_DOUT);
+  out->SetGain(0.05);
+
+  // MP3 file
+  file = new AudioFileSourceSD("/music/bap.mp3");
+  mp3 = new AudioGeneratorMP3();
 }
 
 void loop()
 {
+  if (mp3->isRunning()) {
+    if (!mp3->loop()) {
+      mp3->stop();
+
+      alarm_music_started = false;
+      release_alarm_music_source();
+
+      Link.println("Finished");
+    }
+  }
+
   loop_display();
   poll_serial_commands();
 }
