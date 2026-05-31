@@ -24,7 +24,7 @@ static const lv_image_dsc_t *current_icon = NULL;
 static bool current_is_daytime = true;
 
 // Sleep mode variables
-#define INACTIVITY_TIMEOUT_MS 120000  // 2 minutes in milliseconds
+#define INACTIVITY_TIMEOUT_MS 30000  // 30 s (in ms)
 
 static uint32_t last_activity_time = 0;
 static bool backlight_enabled = true;
