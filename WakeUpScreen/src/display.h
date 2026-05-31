@@ -4,8 +4,10 @@
 #include <Arduino_GFX_Library.h> /* 1.5.0 */
 #include <lvgl.h>                /* 9.2.2 */
 #include "TAMC_GT911.h"          /* 1.0.2 */
+#include "ui.h"                  /* For sleep mode functions */
 
 // Configuration for Display and Touch
+#undef TFT_BL  // Clear default board definition
 #define TFT_BL 2
 #define TOUCH_GT911_SCL 20
 #define TOUCH_GT911_SDA 19
@@ -15,6 +17,11 @@
 #define TOUCH_MAP_X2 0
 #define TOUCH_MAP_Y1 480
 #define TOUCH_MAP_Y2 0
+
+// PWM configuration for backlight
+#define TFT_BL_PWM_CHANNEL 0
+#define TFT_BL_PWM_FREQ 5000
+#define TFT_BL_PWM_RESOLUTION 8
 
 // Initialize touchscreen object
 TAMC_GT911 ts(TOUCH_GT911_SDA, TOUCH_GT911_SCL, TOUCH_GT911_INT, TOUCH_GT911_RST, max(TOUCH_MAP_X1, TOUCH_MAP_X2), max(TOUCH_MAP_Y1, TOUCH_MAP_Y2));
@@ -66,6 +73,7 @@ void my_touchpad_read(lv_indev_t *indev, lv_indev_data_t *data)
                 data->state = LV_INDEV_STATE_PRESSED;
                 data->point.x = ts.points[i].x; // Get x coordinate
                 data->point.y = ts.points[i].y; // Get y coordinate
+                ui_reset_inactivity_timer();    // Reset inactivity timer on touch
             }
         }
     }
@@ -84,9 +92,13 @@ void setup_display()
 
     gfx.fillScreen(0x000000);
 
-#ifdef GFX_BL
-    pinMode(GFX_BL, OUTPUT);
-    digitalWrite(GFX_BL, HIGH);
+#ifdef TFT_BL
+    // Initialize PWM for backlight control
+    ledcSetup(TFT_BL_PWM_CHANNEL, TFT_BL_PWM_FREQ, TFT_BL_PWM_RESOLUTION);
+    ledcAttachPin(TFT_BL, TFT_BL_PWM_CHANNEL);
+    ledcWrite(TFT_BL_PWM_CHANNEL, 255);  // Start with full brightness
+    Serial.printf("Backlight PWM initialized on pin %d (channel %d, freq %d Hz)\n", 
+                  TFT_BL, TFT_BL_PWM_CHANNEL, TFT_BL_PWM_FREQ);
 #endif
 
     ts.begin(); // Initialize the touchscreen

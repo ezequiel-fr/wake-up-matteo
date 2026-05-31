@@ -13,6 +13,11 @@ void ui_set_weather(int temperature_c, int wind_kmh, const char *sunrise_iso8601
 const lv_image_dsc_t *ui_get_current_icon(void);
 void ui_get_icon_obj_size(int *w, int *h);
 
+// Sleep mode management
+void ui_set_backlight(bool enabled);
+void ui_reset_inactivity_timer(void);
+void ui_update_sleep_mode(void);
+
 #ifdef __cplusplus
 }
 #endif

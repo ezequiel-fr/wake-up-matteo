@@ -1,9 +1,9 @@
 #include <stdbool.h>
 
+#include <Arduino.h>
 #include <lvgl.h>
 
 #include "ui.h"
-
 #include "weather_icon.h"
 
 static const char DEFAULT_ICON[] = "cloudy";
@@ -22,6 +22,17 @@ static lv_obj_t *sunrise_label;
 static lv_obj_t *icon_label;
 static const lv_image_dsc_t *current_icon = NULL;
 static bool current_is_daytime = true;
+
+// Sleep mode variables
+#define INACTIVITY_TIMEOUT_MS 120000  // 2 minutes in milliseconds
+
+static uint32_t last_activity_time = 0;
+static bool backlight_enabled = true;
+
+// PWM configuration for backlight
+#define TFT_BL_PWM_CHANNEL 0
+#define TFT_BL_PWM_FREQ 5000
+#define TFT_BL_PWM_RESOLUTION 8
 
 static void apply_weather_mode(bool is_daytime)
 {
@@ -214,6 +225,7 @@ void setup_ui(void)
     build_ui();
     current_is_daytime = true;
     apply_weather_mode(true);
+    last_activity_time = millis();
 }
 
 void ui_set_clock(int year, int month, int day, int hour, int minute, int second)
@@ -292,4 +304,62 @@ void ui_get_icon_obj_size(int *w, int *h)
 {
     if (w) *w = weather_icon ? lv_obj_get_width(weather_icon) : 0;
     if (h) *h = weather_icon ? lv_obj_get_height(weather_icon) : 0;
+}
+
+void ui_set_backlight(bool enabled)
+{
+    backlight_enabled = enabled;
+    
+    // Use PWM for better control
+    uint8_t pwm_value = enabled ? 255 : 0;
+    ledcWrite(TFT_BL_PWM_CHANNEL, pwm_value);
+    
+    Serial.printf("Backlight set to: %s (GPIO %d, PWM=%d)\n", 
+                  enabled ? "ON" : "OFF", 
+                  TFT_BL, 
+                  pwm_value);
+}
+
+void ui_reset_inactivity_timer(void)
+{
+    // Only reset the timer if enough time has passed (avoid noise resets)
+    // or if the backlight is currently off
+    uint32_t now = millis();
+    uint32_t time_since_last_reset = now - last_activity_time;
+    
+    if (time_since_last_reset > 500 || !backlight_enabled)  // Min 500ms between resets
+    {
+        last_activity_time = now;
+        
+        // If backlight is off, turn it back on
+        if (!backlight_enabled)
+        {
+            Serial.println("Touch detected - turning ON backlight!");
+            ui_set_backlight(true);
+        }
+    }
+}
+
+void ui_update_sleep_mode(void)
+{
+    if (!backlight_enabled)
+        return;
+
+    uint32_t current_time = millis();
+    uint32_t elapsed_time = current_time - last_activity_time;
+    
+    // Debug logging every 10 seconds
+    static uint32_t last_log = 0;
+    if (current_time - last_log >= 10000)
+    {
+        Serial.printf("Sleep mode check: elapsed=%lu ms, timeout=%u ms, enabled=%d\n", 
+                      elapsed_time, INACTIVITY_TIMEOUT_MS, (int)backlight_enabled);
+        last_log = current_time;
+    }
+    
+    if (elapsed_time >= INACTIVITY_TIMEOUT_MS)
+    {
+        Serial.println("Turning OFF backlight - inactivity timeout reached!");
+        ui_set_backlight(false);
+    }
 }

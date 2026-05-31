@@ -200,19 +200,34 @@ namespace
       return;
 
     if (parse_set_time_command(line, clock_state))
-      return sync_ui_clock();
+    {
+      sync_ui_clock();
+      return;
+    }
 
     if (parse_set_weather_command(line, weather_state))
-      return sync_ui_weather();
+    {
+      sync_ui_weather();
+      return;
+    }
 
     if (std::strcmp(line, "RING:1") == 0)
-      return start_alarm_music();
+    {
+      start_alarm_music();
+      return;
+    }
 
     if (std::strcmp(line, "RING:STOP") == 0)
-      return stop_alarm_music();
+    {
+      stop_alarm_music();
+      return;
+    }
 
     if (std::strcmp(line, "TIME?") == 0)
-      return sync_ui_clock();
+    {
+      sync_ui_clock();
+      return;
+    }
 
     Serial.printf("Unknown command received: '%s'\n", line);
   }
@@ -300,4 +315,5 @@ void loop()
 
   loop_display();
   poll_serial_commands();
+  ui_update_sleep_mode();
 }
